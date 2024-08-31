@@ -2,11 +2,20 @@
 
 # Author: Noé Paniagua
 
+#Colours
+greenColour="\e[0;32m\033[1m"
+endColour="\033[0m\e[0m"
+redColour="\e[0;31m\033[1m"
+blueColour="\e[0;34m\033[1m"
+yellowColour="\e[0;33m\033[1m"
+purpleColour="\e[0;35m\033[1m"
+turquoiseColour="\e[0;36m\033[1m"
+grayColour="\e[0;37m\033[1m"
+
+#Configuration variables
 yamlFile="usbInfo.yaml"
 
 saveNewDevice() {
-    echo "whusb: Hi, say a name for $1!"
-    read newName
     fd=$1
 
     #Read the data from usb and clean the strings
@@ -14,11 +23,16 @@ saveNewDevice() {
     serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
 
     #Search the serial id in the database
-    #if grep -q "$serialNumberClean" "$yamlFile"; then
-    #    echo "whusb: This device is called $()"
-        
-    yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
-    yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
+    nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
+    if [ ! -n $nameFound ]; then
+		echo -e "${purpleColour}whusb${endColour}: ${turquoiseColour}$fd${endColour} exists in database, named as ${yellowColour}$nameFound${endColour}"
+		return
+    else
+    	echo -e -n "${purpleColour}whusb${endColour}: Hi, say a name for ${turquoiseColour}$fd${endColour}: "
+		read newName
+		yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
+		yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
+    fi
 }
 
 showDevices() {
@@ -32,61 +46,52 @@ showDevices() {
         for singleFD in "$pathG"/*; do
             serialNumber=$(udevadm info --name="$singleFD" 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
             if [ -n "$serialNumber" ]; then
-                nameFound=$(searchSerialNumber $serialNumber)
+                nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
                 if [ -n "$nameFound" ]; then
-                    echo "whusb: $singleFD is in truth your bb $nameFound"
-                    return
+                    echo -e "${purpleColour}whusb${endColour}: ${turquoiseColour}$singleFD${endColour} is in truth your bb ${yellowColour}$nameFound${endColour}"
+                    break
                 fi
             fi
-            
         done
     done
+
+    echo -e "${purpleColour}whusb${endColour}: There aren't more known devices :("
 }
 
-searchSerialNumber() {
-    serialNumber=$1
-    for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
-        if [[ $serialNumber = $(yq eval ".$names.ID_SERIAL_SHORT" "$yamlFile") ]]; then
-            echo $names
-            return
-        fi
-    done
+searchIntoYaml() {
+	yamlElement=$1
+    parameter=$2
+
+    if [ ! -s "$usbYaml" ]; then
+    	for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
+        	if [[ $parameter = $(yq eval ".$names.$yamlElement" "$yamlFile") ]]; then
+            	echo $names
+            	return
+        	fi
+    	done
+    fi
+}
+
+showHelp() {
+	echo -e "La estas liando negro esto va asi..."
 }
 
 
-# MAIN MAIN MAIN MAIN MAIN MAIN MAIN MAIN MAIN
-# Need help ma g...
-if [[ $# -lt 1 ]]
-    then 
-    showHelp
-    exit 1
-fi
+# MAIN FUNCTION
 
 # Need to create the file??
 if [ ! -f "$yamlFile" ]; then
-    echo "{}" > "$yamlFile"
-    echo "whusb: A yaml file will store usb data in $(pwd)/$yamlFile..."
+    #echo "{}" > "$yamlFile"
+    touch "$yamlFile"
+    echo -e "${purpleColour}whusb${endColour}:A yaml file will store usb data in $(pwd)/$yamlFile..."
+
 fi
 
-#Select the utility
-case $1 in
--new)
-    saveNewDevice $2
-    exit 0
-    ;;
--show)
-    showDevices
-    exit 0
-    ;;
-3)
-    exit 0
-    ;;
-
-*)
-    echo "MAAAAAAAAAAAAL pon uno de los otros"
-    exit 0
-    ;;
-esac
-#End of utility selector
-
-echo 
+# Read parameters and execute functions
+parameter_counter=0; while getopts "n:sh" arg; do
+	case $arg in 
+		n) saveNewDevice $OPTARG; exit 0;;
+		s) showDevices; exit 0;;
+		h) showHelp; exit 0;;
+	esac
+done
