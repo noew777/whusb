@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Author: Noé Paniagua
+
+yamlFile="usbInfo.yaml"
+
+saveNewDevice() {
+    echo "whusb: Hi, say a name for $1!"
+    read newName
+    fd=$1
+
+    #Read the data from usb and clean the strings
+    vendorID=$(udevadm info --name=${fd/$"/dev/"/} | grep -i ID_VENDOR=)
+    serialNumber=$(udevadm info --name=${fd/$"/dev/"/} | grep -i ID_SERIAL_SHORT=)
+    vendorIDclean="${vendorID#*=}"
+    serialNumberClean="${serialNumber#*=}"
+        
+    yq eval -i ".$newName.ID_VENDOR = \"$vendorIDclean\"" "$yamlFile"
+    yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumberClean\"" "$yamlFile"
+}
+
+# MAIN MAIN MAIN MAIN MAIN MAIN MAIN MAIN MAIN
+# Need help ma g...
+if [[ $# -lt 1 ]]
+    then 
+    showHelp
+    exit 1
+fi
+
+# Need to create the file??
+if [ ! -f "$yamlFile" ]; then
+    echo "{}" > "$yamlFile"
+    echo "whusb: A yaml file will store usb data in $(pwd)/$yamlFile..."
+fi
+
+#Select the utility
+case $1 in
+-new)
+    saveNewDevice $2
+    exit 0
+    ;;
+-show)
+    opcion_2
+    exit 0
+    ;;
+3)
+    exit 0
+    ;;
+
+*)
+    echo "MAAAAAAAAAAAAL pon uno de los otros"
+    exit 0
+    ;;
+esac
+#End of utility selector
+
+echo 
