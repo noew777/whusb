@@ -10,14 +10,49 @@ saveNewDevice() {
     fd=$1
 
     #Read the data from usb and clean the strings
-    vendorID=$(udevadm info --name=${fd/$"/dev/"/} | grep -i ID_VENDOR=)
-    serialNumber=$(udevadm info --name=${fd/$"/dev/"/} | grep -i ID_SERIAL_SHORT=)
-    vendorIDclean="${vendorID#*=}"
-    serialNumberClean="${serialNumber#*=}"
+    vendorID=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
+    serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
+
+    #Search the serial id in the database
+    #if grep -q "$serialNumberClean" "$yamlFile"; then
+    #    echo "whusb: This device is called $()"
         
-    yq eval -i ".$newName.ID_VENDOR = \"$vendorIDclean\"" "$yamlFile"
-    yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumberClean\"" "$yamlFile"
+    yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
+    yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
 }
+
+showDevices() {
+    numDevices=$(yq eval "keys | length" "$yamlFile")
+
+    #Must search each saved device
+    for i in $(seq 1 $numDevices); do
+        pathG="/dev"
+
+        #Must search the value (whileeeeeee)
+        for singleFD in "$pathG"/*; do
+            serialNumber=$(udevadm info --name="$singleFD" 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
+            if [ -n "$serialNumber" ]; then
+                nameFound=$(searchSerialNumber $serialNumber)
+                if [ -n "$nameFound" ]; then
+                    echo "whusb: $singleFD is in truth your bb $nameFound"
+                    return
+                fi
+            fi
+            
+        done
+    done
+}
+
+searchSerialNumber() {
+    serialNumber=$1
+    for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
+        if [[ $serialNumber = $(yq eval ".$names.ID_SERIAL_SHORT" "$yamlFile") ]]; then
+            echo $names
+            return
+        fi
+    done
+}
+
 
 # MAIN MAIN MAIN MAIN MAIN MAIN MAIN MAIN MAIN
 # Need help ma g...
@@ -40,7 +75,7 @@ case $1 in
     exit 0
     ;;
 -show)
-    opcion_2
+    showDevices
     exit 0
     ;;
 3)
