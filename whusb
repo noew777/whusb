@@ -9,14 +9,14 @@
 #work. If not, see <https://creativecommons.org/licenses/by-nc-sa/4.0/>.
 
 #Colours
-greenColour="\e[0;32m\033[1m"
-endColour="\033[0m\e[0m"
-redColour="\e[0;31m\033[1m"
+green="\e[0;32m\033[1m"
+end="\033[0m\e[0m"
+r="\e[0;31m\033[1m"
 blueColour="\e[0;34m\033[1m"
-yellowColour="\e[0;33m\033[1m"
-purpleColour="\e[0;35m\033[1m"
-turquoiseColour="\e[0;36m\033[1m"
-grayColour="\e[0;37m\033[1m"
+y="\e[0;33m\033[1m"
+m="\e[0;35m\033[1m"
+turq="\e[0;36m\033[1m"
+g="\e[0;37m\033[1m"
 
 #Configuration variables
 yamlFile="usbInfo.yaml"
@@ -27,21 +27,26 @@ saveNewDevice() {
     #Read the data from usb and clean the strings
     vendorID=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
     serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
+	model=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_MODEL_FROM_DATABASE= | awk -F= '{print $2}')
+
+	#Show info about the device
+	echo -e "${m}whusb${end}: ${turq}$fd${end} is from ${green}$vendorID${end} and model ${green}$model${end}\n"
 
     #Search the serial id in the database
     nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
-    if [ ! -n $nameFound ]; then
-		echo -e "${purpleColour}whusb${endColour}: ${turquoiseColour}$fd${endColour} exists in database, named as ${yellowColour}$nameFound${endColour}"
+    echo -e "${m}whusb${end}: Searching the device in the database...\n"
+    if [ -n $nameFound ]; then
+		echo -e "${m}whusb${end}: ${turq}$fd${end} exists in database, named as ${y}$nameFound${end}\n"
 		return
     else
-    	echo -e -n "${purpleColour}whusb${endColour}: Hi, say a name for ${turquoiseColour}$fd${endColour}: "
+    	echo -e -n "${m}whusb${end}: New device! Say a name for ${turq}$fd${end}: "
 		read newName
 		yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
 		yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
     fi
 }
 
-showDevices() {
+findDevices() {
     numDevices=$(yq eval "keys | length" "$yamlFile")
 
     #Must search each saved device
@@ -54,19 +59,33 @@ showDevices() {
             if [ -n "$serialNumber" ]; then
                 nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
                 if [ -n "$nameFound" ]; then
-                    echo -e "${purpleColour}whusb${endColour}: ${turquoiseColour}$singleFD${endColour} is in truth your bb ${yellowColour}$nameFound${endColour}"
+                    echo -e "${m}whusb${end}: ${turq}$singleFD${end} is in truth your bb ${y}$nameFound${end}\n"
                     break
                 fi
             fi
         done
     done
 
-    echo -e "${purpleColour}whusb${endColour}: There aren't more known devices :("
+    echo -e "${m}whusb${end}: There aren't more known devices :("
+}
+
+deleteDevice() {
+	local -r deleteDevice=$1
+	if [ ! -s "$usbYaml" ]; then
+    	for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
+     	   if [[ $names = $deleteDevice ]]; then
+ 	          yq -i "del(.$deleteDevice)" "$yamlFile"
+              return
+           fi
+        done
+    fi
+
+    echo -e "${m}whusb${end}: This name doesn't exist :(\n"
 }
 
 searchIntoYaml() {
-	yamlElement=$1
-    parameter=$2
+	local -r yamlElement=$1
+    local -r parameter=$2
 
     if [ ! -s "$usbYaml" ]; then
     	for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
@@ -79,7 +98,9 @@ searchIntoYaml() {
 }
 
 showHelp() {
-	echo -e "La estas liando negro esto va asi..."
+	echo -e "  ${m}-h${end}     Show this message"
+	echo -e "  ${m}-n${end}     Text info about the device and save it if u want"
+	echo
 }
 
 
@@ -93,11 +114,20 @@ if [ ! -f "$yamlFile" ]; then
 
 fi
 
+echo -e "${g}[${end}**${g}]${end}**************************************${g}[${end}**${g}]${end}"
+echo -e "${g}[${end}**${g}]${end} ${r}Welcome to your devices backup${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
+echo -e "${g}[${end}**${g}]${end}**************************************${g}[${end}**${g}]${end}\n"
+
 # Read parameters and execute functions
-parameter_counter=0; while getopts "n:sh" arg; do
+parameter_counter=0; while getopts "n:fd:h" arg; do
 	case $arg in 
-		n) saveNewDevice $OPTARG; exit 0;;
-		s) showDevices; exit 0;;
-		h) showHelp; exit 0;;
+		n) saveNewDevice $OPTARG;;
+		f) findDevices;;
+		d) deleteDevice $OPTARG;;
+		h) showHelp;;
 	esac
 done
+
+echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
+echo -e "${g}[${end}**${g}]${end} ${r}See you again ^^${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
+echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
