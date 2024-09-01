@@ -8,6 +8,14 @@
 #You should have received a copy of the license along with this
 #work. If not, see <https://creativecommons.org/licenses/by-nc-sa/4.0/>.
 
+#To do .....
+#1.Make a list of unplugged devices
+#2. In -n ask to the user if him wanna save this device
+#3. Show messages in delete mode
+#4. Write a well readme
+#5. Develop error cases as when u forget an argument
+
+
 #Colours
 green="\e[0;32m\033[1m"
 end="\033[0m\e[0m"
@@ -25,98 +33,119 @@ saveNewDevice() {
     fd=$1
 
     #Read the data from usb and clean the strings
-    vendorID=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
-    serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
-	model=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_MODEL_FROM_DATABASE= | awk -F= '{print $2}')
+    local vendorID=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
+	local serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
+    local model=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_MODEL_FROM_DATABASE= | awk -F= '{print $2}')
 
 	#Show info about the device
-	echo -e "${m}whusb${end}: ${turq}$fd${end} is from ${green}$vendorID${end} and model ${green}$model${end}\n"
+	echo -e "${m}whusb${end}: ${turq}$fd${end} is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
 
     #Search the serial id in the database
-    nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
-    echo -e "${m}whusb${end}: Searching the device in the database...\n"
-    if [ -n $nameFound ]; then
+	echo -e "${m}whusb${end}: Searching the device in database...\n"
+    local nameFound
+	nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
+    if [  $? -eq 0 ]; then
 		echo -e "${m}whusb${end}: ${turq}$fd${end} exists in database, named as ${y}$nameFound${end}\n"
 		return
     else
     	echo -e -n "${m}whusb${end}: New device! Say a name for ${turq}$fd${end}: "
 		read newName
+		echo -e "\n${m}whusb${end}: The ${y}$newName${end} have been saved ok!!\n"
+
 		yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
 		yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
+		yq eval -i ".$newName.ID_MODEL_FROM_DATABASE = \"$model\"" "$yamlFile"
     fi
 }
 
 findDevices() {
-    numDevices=$(yq eval "keys | length" "$yamlFile")
+	if [ -s "$yamlFile" ]; then
+		numDevices=$(yq eval "keys | length" "$yamlFile")
+		echo -e "${m}whusb${end}: Let's show all ${r}plugged${end} devices"
 
-    #Must search each saved device
-    for i in $(seq 1 $numDevices); do
-        pathG="/dev"
+		#Must search each saved device
+		for i in $(seq 1 $numDevices); do
+			pathG="/dev"
 
-        #Must search the value (whileeeeeee)
-        for singleFD in "$pathG"/*; do
-            serialNumber=$(udevadm info --name="$singleFD" 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
-            if [ -n "$serialNumber" ]; then
-                nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
-                if [ -n "$nameFound" ]; then
-                    echo -e "${m}whusb${end}: ${turq}$singleFD${end} is in truth your bb ${y}$nameFound${end}\n"
-                    break
-                fi
-            fi
-        done
-    done
+			#Must search the value (whileeeeeee)
+			for singleFD in "$pathG"/*; do
+				local serialNumber=$(udevadm info --name="$singleFD" 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
+				
+				if [ -n "$serialNumber" ]; then
+					local nameFound
+					nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
+					
+					if [ $? -eq 0 ]; then
+						local vendorID=$(yq eval ".$nameFound.ID_VENDOR" "$yamlFile")
+						local serialNumber=$(yq eval ".$nameFound.ID_SERIAL_SHORT" "$yamlFile")
+						local model=$(yq eval ".$nameFound.ID_MODEL_FROM_DATABASE" "$yamlFile")
+						#Plugged must be saved into a variable here
+						echo -e "${m}whusb${end}: ${y}$nameFound${end}(${turq}$singleFD${end}) is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
+						break
+					fi
 
-    echo -e "${m}whusb${end}: There aren't more known devices :("
+				fi
+			done
+
+		done
+    	echo -e "${m}whusb${end}: There aren't any more known devices :("
+	else
+	 	echo -e "${m}whusb${end}: There aren't any devices in backup :("
+	fi
 }
 
 deleteDevice() {
 	local -r deleteDevice=$1
-	if [ ! -s "$usbYaml" ]; then
+	if [ -s "$yamlFile" ]; then
     	for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
      	   if [[ $names = $deleteDevice ]]; then
  	          yq -i "del(.$deleteDevice)" "$yamlFile"
-              return
+              return 0
            fi
         done
     fi
 
     echo -e "${m}whusb${end}: This name doesn't exist :(\n"
+	return 0
 }
 
 searchIntoYaml() {
 	local -r yamlElement=$1
     local -r parameter=$2
 
-    if [ ! -s "$usbYaml" ]; then
-    	for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
-        	if [[ $parameter = $(yq eval ".$names.$yamlElement" "$yamlFile") ]]; then
-            	echo $names
-            	return
-        	fi
-    	done
-    fi
+	if [ -s "$yamlFile" ]; then
+		for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
+			if [[ $parameter == $(yq eval ".$names.$yamlElement" "$yamlFile") ]]; then
+				echo $names
+				return 0
+			fi
+		done
+	fi
+	
+  	return 1
 }
 
 showHelp() {
 	echo -e "  ${m}-h${end}     Show this message"
 	echo -e "  ${m}-n${end}     Text info about the device and save it if u want"
+	echo -e "  ${m}-f${end}     Find known plugged devices"
+	echo -e "  ${m}-d${end}     Delete a device from the backup"
 	echo
 }
 
 
 # MAIN FUNCTION
+echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}"
+echo -e "${g}[${end}**${g}]${end} ${r}Welcome to your devices' backup${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
+echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}\n"
 
 # Need to create the file??
 if [ ! -f "$yamlFile" ]; then
     #echo "{}" > "$yamlFile"
     touch "$yamlFile"
-    echo -e "${purpleColour}whusb${endColour}:A yaml file will store usb data in $(pwd)/$yamlFile..."
+    echo -e "${m}whusb${end}:A yaml file will store usb data in ${r}$(pwd)/$yamlFile${end}...\n"
 
 fi
-
-echo -e "${g}[${end}**${g}]${end}**************************************${g}[${end}**${g}]${end}"
-echo -e "${g}[${end}**${g}]${end} ${r}Welcome to your devices backup${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
-echo -e "${g}[${end}**${g}]${end}**************************************${g}[${end}**${g}]${end}\n"
 
 # Read parameters and execute functions
 parameter_counter=0; while getopts "n:fd:h" arg; do
