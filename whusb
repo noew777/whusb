@@ -9,7 +9,6 @@
 #work. If not, see <https://creativecommons.org/licenses/by-nc-sa/4.0/>.
 
 #To do .....
-#1.Make a list of unplugged devices
 #2. In -n ask to the user if him wanna save this device
 #3. Show messages in delete mode
 #4. Write a well readme
@@ -70,16 +69,16 @@ findDevices() {
 			#Must search the value (whileeeeeee)
 			for singleFD in "$pathG"/*; do
 				local serialNumber=$(udevadm info --name="$singleFD" 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
-				
+
 				if [ -n "$serialNumber" ]; then
 					local nameFound
 					nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
-					
+
 					if [ $? -eq 0 ]; then
 						local vendorID=$(yq eval ".$nameFound.ID_VENDOR" "$yamlFile")
 						local serialNumber=$(yq eval ".$nameFound.ID_SERIAL_SHORT" "$yamlFile")
 						local model=$(yq eval ".$nameFound.ID_MODEL_FROM_DATABASE" "$yamlFile")
-						#Plugged must be saved into a variable here
+
 						echo -e "${m}whusb${end}: ${y}$nameFound${end}(${turq}$singleFD${end}) is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
 						break
 					fi
@@ -91,6 +90,20 @@ findDevices() {
     	echo -e "${m}whusb${end}: There aren't any more known devices :("
 	else
 	 	echo -e "${m}whusb${end}: There aren't any devices in backup :("
+	fi
+}
+
+showAllDevices() {
+	if [ -s "$yamlFile" ]; then
+		for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
+			local vendorID=$(yq eval ".$names.ID_VENDOR" "$yamlFile")
+			local serialNumber=$(yq eval ".$names.ID_SERIAL_SHORT" "$yamlFile")
+			local model=$(yq eval ".$names.ID_MODEL_FROM_DATABASE" "$yamlFile")
+
+			echo -e "${m}whusb${end}: ${y}$names${end} is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
+		done
+	else
+		echo -e "${m}whusb${end}: There aren't any devices in backup :("
 	fi
 }
 
@@ -121,7 +134,7 @@ searchIntoYaml() {
 			fi
 		done
 	fi
-	
+
   	return 1
 }
 
@@ -129,6 +142,7 @@ showHelp() {
 	echo -e "  ${m}-h${end}     Show this message"
 	echo -e "  ${m}-n${end}     Text info about the device and save it if u want"
 	echo -e "  ${m}-f${end}     Find known plugged devices"
+	echo -e "  ${m}-s${end}		Show all stored devices"
 	echo -e "  ${m}-d${end}     Delete a device from the backup"
 	echo
 }
@@ -144,15 +158,15 @@ if [ ! -f "$yamlFile" ]; then
     #echo "{}" > "$yamlFile"
     touch "$yamlFile"
     echo -e "${m}whusb${end}:A yaml file will store usb data in ${r}$(pwd)/$yamlFile${end}...\n"
-
 fi
 
 # Read parameters and execute functions
-parameter_counter=0; while getopts "n:fd:h" arg; do
+parameter_counter=0; while getopts "n:sfd:h" arg; do
 	case $arg in 
 		n) saveNewDevice $OPTARG;;
 		f) findDevices;;
 		d) deleteDevice $OPTARG;;
+		s) showAllDevices;;
 		h) showHelp;;
 	esac
 done
