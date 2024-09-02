@@ -9,11 +9,11 @@
 #work. If not, see <https://creativecommons.org/licenses/by-nc-sa/4.0/>.
 
 #To do .....
-#2. In -n ask to the user if him wanna save this device
-#3. Show messages in delete mode
-#4. Write a well readme
+#Write a well readme
 #5. Develop error cases as when u forget an argument
 
+# CONFIGURATION VARIABLES
+SHOW_WHUSB_HEADER_END_TEXT=1  # 1-> Show the texts     0-> Disable the texts
 
 #Colours
 green="\e[0;32m\033[1m"
@@ -31,36 +31,54 @@ yamlFile="usbInfo.yaml"
 saveNewDevice() {
     fd=$1
 
-    #Read the data from usb and clean the strings
-    local vendorID=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
-	local serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
-    local model=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_MODEL_FROM_DATABASE= | awk -F= '{print $2}')
+    local serialNumber=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
 
-	#Show info about the device
-	echo -e "${m}whusb${end}: ${turq}$fd${end} is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
+	if [ -n "$serialNumber" ]; then
+		#Read the data from usb and clean the strings
+		local vendorID=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
+		local model=$(udevadm info --name=${fd/$"/dev/"/} 2>/dev/null | grep -i ID_MODEL_FROM_DATABASE= | awk -F= '{print $2}')
 
-    #Search the serial id in the database
-	echo -e "${m}whusb${end}: Searching the device in database...\n"
-    local nameFound
-	nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
-    if [  $? -eq 0 ]; then
-		echo -e "${m}whusb${end}: ${turq}$fd${end} exists in database, named as ${y}$nameFound${end}\n"
-		return
-    else
-    	echo -e -n "${m}whusb${end}: New device! Say a name for ${turq}$fd${end}: "
-		read newName
-		echo -e "\n${m}whusb${end}: The ${y}$newName${end} have been saved ok!!\n"
+		#Show info about the device
+		echo -e "${m}whusb${end}: ${turq}$fd${end} is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
 
-		yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
-		yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
-		yq eval -i ".$newName.ID_MODEL_FROM_DATABASE = \"$model\"" "$yamlFile"
-    fi
+		#Search the serial id in the database
+		echo -e "${m}whusb${end}: Searching the device in database...\n"
+		local nameFound
+		nameFound=$(searchIntoYaml "ID_SERIAL_SHORT" $serialNumber)
+
+		# Exist or not?? Choose if wanna save it or not...
+		if [  $? -eq 0 ]; then
+			echo -e "${m}whusb${end}: ${turq}$fd${end} exists in database, named as ${y}$nameFound${end}\n"
+			return 0
+		else
+			while true; do
+				echo -e -n "${m}whusb${end}: Want to save this device [y/n]? "
+				read saveDevice
+
+				case $saveDevice in
+					[yY] ) echo -e -n "${m}whusb${end}: Ok, say a name for ${turq}$fd${end}: " ; break ;;
+					[nN] ) echo -e "${m}whusb${end}: Ok, maybe next time :)\n" ; return ; break ;;
+					* ) echo -e "${m}whusb${end}: Please answer with yes[y/Y] or not[n/N]..." ;;
+				esac
+			done
+
+			read newName
+			echo -e "${m}whusb${end}: USB device ${y}$newName${end} have been saved correctly!!\n"
+
+			yq eval -i ".$newName.ID_VENDOR = \"$vendorID\"" "$yamlFile"
+			yq eval -i ".$newName.ID_SERIAL_SHORT = \"$serialNumber\"" "$yamlFile"
+			yq eval -i ".$newName.ID_MODEL_FROM_DATABASE = \"$model\"" "$yamlFile"
+		fi
+	else
+		echo -e "${m}whusb${end}: Are you sure about ${turq}$fd${end}? USB's FD are in ${r}/dev/*${end}...\n"
+
+	fi
 }
 
 findDevices() {
 	if [ -s "$yamlFile" ]; then
 		numDevices=$(yq eval "keys | length" "$yamlFile")
-		echo -e "${m}whusb${end}: Let's show all ${r}plugged${end} devices"
+		echo -e "${m}whusb${end}: Let's show all ${r}plugged${end} devices...\n"
 
 		#Must search each saved device
 		for i in $(seq 1 $numDevices); do
@@ -87,13 +105,15 @@ findDevices() {
 			done
 
 		done
-    	echo -e "${m}whusb${end}: There aren't any more known devices :("
+    	echo -e "${m}whusb${end}: There aren't any more known devices\n"
 	else
-	 	echo -e "${m}whusb${end}: There aren't any devices in backup :("
+	 	echo -e "${m}whusb${end}: There aren't any devices in backup :(\n"
 	fi
 }
 
 showAllDevices() {
+	echo -e "${m}whusb${end}: Let's show all devices from the backup...\n"
+
 	if [ -s "$yamlFile" ]; then
 		for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
 			local vendorID=$(yq eval ".$names.ID_VENDOR" "$yamlFile")
@@ -103,23 +123,26 @@ showAllDevices() {
 			echo -e "${m}whusb${end}: ${y}$names${end} is from ${green}$vendorID${end} and model ${green}$model${end} with SN ${green}$serialNumber${end}\n"
 		done
 	else
-		echo -e "${m}whusb${end}: There aren't any devices in backup :("
+		echo -e "${m}whusb${end}: There aren't any devices in backup :(\n"
 	fi
 }
 
 deleteDevice() {
 	local -r deleteDevice=$1
+	echo  -e "${m}whusb${end}: Searching ${y}$names${end} to delete it...\n"
+
 	if [ -s "$yamlFile" ]; then
     	for names in $(yq eval "keys" "$yamlFile" | awk '{print $2}'); do
      	   if [[ $names = $deleteDevice ]]; then
  	          yq -i "del(.$deleteDevice)" "$yamlFile"
+ 	          echo -e "${m}whusb${end}: ${y}$names${end} have been deleted from the backup!\n"
               return 0
            fi
         done
     fi
 
-    echo -e "${m}whusb${end}: This name doesn't exist :(\n"
-	return 0
+    echo -e "${m}whusb${end}: This name doesn't exist in the backup :(\n"
+	return 1
 }
 
 searchIntoYaml() {
@@ -139,25 +162,28 @@ searchIntoYaml() {
 }
 
 showHelp() {
+	echo -e "  ${m}whusb${end}: Work with database stored in ${r}$(pwd)/$yamlFile${end}...\n"
 	echo -e "  ${m}-h${end}     Show this message"
-	echo -e "  ${m}-n${end}     Text info about the device and save it if u want"
+	echo -e "  ${m}-n${end}     Info and save a device [whusb -n <Device's FD's path>]"
 	echo -e "  ${m}-f${end}     Find known plugged devices"
-	echo -e "  ${m}-s${end}		Show all stored devices"
-	echo -e "  ${m}-d${end}     Delete a device from the backup"
+	echo -e "  ${m}-s${end}     Show all stored devices"
+	echo -e "  ${m}-d${end}     Delete a device from the backup [whusb -d <Device's name in backup>]"
 	echo
 }
 
 
 # MAIN FUNCTION
-echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}"
-echo -e "${g}[${end}**${g}]${end} ${r}Welcome to your devices' backup${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
-echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}\n"
+if [[ "$SHOW_WHUSB_HEADER_END_TEXT" -eq 1 ]]; then
+	echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}"
+	echo -e "${g}[${end}**${g}]${end} ${r}Welcome to your devices' backup${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
+	echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}\n"
+fi
 
 # Need to create the file??
 if [ ! -f "$yamlFile" ]; then
     #echo "{}" > "$yamlFile"
     touch "$yamlFile"
-    echo -e "${m}whusb${end}:A yaml file will store usb data in ${r}$(pwd)/$yamlFile${end}...\n"
+    echo -e "->${m}whusb${end}: Backup file have been created in ${r}$(pwd)/$yamlFile${end}...\n"
 fi
 
 # Read parameters and execute functions
@@ -171,6 +197,10 @@ parameter_counter=0; while getopts "n:sfd:h" arg; do
 	esac
 done
 
-echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
-echo -e "${g}[${end}**${g}]${end} ${r}See you again ^^${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
-echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
+if [[ "$SHOW_WHUSB_HEADER_END_TEXT" -eq 1 ]]; then
+	echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
+	echo -e "${g}[${end}**${g}]${end} ${r}See you again ^^${end} ${m}whusb${end} ${g}[${end}**${g}]${end}"
+	echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
+fi
+
+
