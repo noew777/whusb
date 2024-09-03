@@ -147,6 +147,36 @@ deleteDevice() {
 	return 1
 }
 
+# Show a new device file plugged
+checkPluggedDevice() {
+	touch temp; touch temp2
+	local newDevice=0
+
+	echo -e "${m}whusb${end}: Plug an USB device!\n"
+	while [ $newDevice -eq "0" ]; do
+		ls /dev/ > temp
+		sleep 1
+		ls /dev/ > temp2
+		devices=$(diff temp temp2 | grep ">" | awk '{print $2}')
+
+		for descriptor in $devices; do
+			local serialNumber=$(udevadm info --name=${descriptor/$"/dev/"/} 2>/dev/null | grep -i ID_SERIAL_SHORT= | awk -F= '{print $2}')
+
+			if [ -n "$serialNumber" ]; then
+				#Read the data from usb and clean the strings
+				local vendorID=$(udevadm info --name=${descriptor/$"/dev/"/} 2>/dev/null | grep -i ID_VENDOR= | awk -F= '{print $2}')
+				local model=$(udevadm info --name=${descriptor/$"/dev/"/} 2>/dev/null | grep -i ID_MODEL_FROM_DATABASE= | awk -F= '{print $2}')
+
+				#Show info about the device
+				echo -e "${m}whusb${end}: Plugged device works with ${turq}/dev/$descriptor${end} and is from ${green}$vendorID${end}, model ${green}$model${end}\n"
+				newDevice="1"
+			fi
+		done
+	done
+
+	rm temp; rm temp2
+}
+
 # Search a device into a yaml file knowing one parameter
 searchIntoYaml() {
 	local -r yamlElement=$1
@@ -168,10 +198,11 @@ searchIntoYaml() {
 showHelp() {
 	echo -e "  ${m}whusb${end}: Work with database stored in ${r}$(pwd)/$yamlFile${end}...\n"
 	echo -e "  ${m}-h${end}     Show this message"
-	echo -e "  ${m}-n${end}     Info and store a device [whusb -n <Device's FD's path>]"
+	echo -e "  ${m}-n${end}     Info and store a device [whusb -n <Device's file path>]"
 	echo -e "  ${m}-f${end}     Find known plugged devices"
 	echo -e "  ${m}-s${end}     Show all stored devices"
 	echo -e "  ${m}-d${end}     Delete a device from the backup [whusb -d <Device's name in backup>]"
+	echo -e "  ${m}-r${end}     Execute, and plug a device to know its device's file"
 	echo
 }
 
@@ -198,13 +229,14 @@ if [ ! -f "$yamlFile" ]; then
 fi
 
 # Read parameters and execute functions
-parameter_counter=0; while getopts "n:sfd:h" arg; do
+parameter_counter=0; while getopts "n:sfd:hr" arg; do
 	case $arg in
 		n) saveNewDevice $OPTARG;parameter_counter=$((parameter_counter + 1));;
 		f) findDevices;parameter_counter=$((parameter_counter + 1));;
 		d) deleteDevice $OPTARG;parameter_counter=$((parameter_counter + 1));;
 		s) showAllDevices;parameter_counter=$((parameter_counter + 1));;
 		h) showHelp;parameter_counter=$((parameter_counter + 1));;
+		r) checkPluggedDevice;parameter_counter=$((parameter_counter + 1));;
 	esac
 done
 
