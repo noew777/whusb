@@ -1,0 +1,6 @@
+# WhUSB
+## Overview
+WhUSB is a bash script that try to solve some problems that involves embedded system development working with or in UNIX's based machines. This tool inform to the user about which device file (/dev/*) owns each system connected to the PC throught USB (from oscilloscopes to development boards). Furthermore, create a database with info about the devices and a name gave by user. With all of this, as a developer you will be able to know which systems are connected to a machine just with a name choosen by you (and with their own device's files names) even if the machine restarts (usually the device's files names are changed). This idea came to me due to a time developing in Raspberry Pis with four development boards connected at the same time, know which /dev/ttyACM* was each board burned like hell and made me loss more hours than I would like. I'm really excited of see people enjoying and upgrading WhUSB!
+
+## Installation
+Just clone the repository with ` git clone https://github.com/noew777/whusb.git ` in any path of your system. Grant execution permissions to the bash script with  ` sudo chmod +x whusb `. Now, from the repository just need to execute this command `echo "export PATH+=:"$(pwd)"" >> ~/.bashrc`to be able to use whusb from all paths.
