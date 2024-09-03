@@ -183,6 +183,13 @@ if [[ "$SHOW_WHUSB_HEADER_END_TEXT" -eq 1 ]]; then
 	echo -e "${g}[${end}**${g}]${end}***************************************${g}[${end}**${g}]${end}\n"
 fi
 
+# Check dependencies
+test -z "$(snap list | grep "yq.*mikefarah")"
+if [ $? -eq "0" ]; then
+	echo -e "->${m}whusb${end}: Need to install snap's yq dependency, execute: ${r}$ sudo snap install yq${end}\n"
+	exit 1
+fi
+
 # Need to create the file??
 if [ ! -f "$yamlFile" ]; then
     #echo "{}" > "$yamlFile"
@@ -193,13 +200,18 @@ fi
 # Read parameters and execute functions
 parameter_counter=0; while getopts "n:sfd:h" arg; do
 	case $arg in
-		n) saveNewDevice $OPTARG;;
-		f) findDevices;;
-		d) deleteDevice $OPTARG;;
-		s) showAllDevices;;
-		h) showHelp;;
+		n) saveNewDevice $OPTARG;parameter_counter=$((parameter_counter + 1));;
+		f) findDevices;parameter_counter=$((parameter_counter + 1));;
+		d) deleteDevice $OPTARG;parameter_counter=$((parameter_counter + 1));;
+		s) showAllDevices;parameter_counter=$((parameter_counter + 1));;
+		h) showHelp;parameter_counter=$((parameter_counter + 1));;
 	esac
 done
+
+# If there aren't any command
+if [ $parameter_counter -eq "0" ];then
+	showHelp
+fi
 
 if [[ "$SHOW_WHUSB_HEADER_END_TEXT" -eq 1 ]]; then
 	echo -e "${g}[${end}**${g}]${end}************************${g}[${end}**${g}]${end}"
